@@ -20,12 +20,28 @@
         _val;                                    \
     })
 
+
+/*
+ * static inline struct pid *task_pid(struct task_struct *task)
+ * {
+ *  return task->pids[PIDTYPE_PID].pid;
+ * }
+ */
 static _inline struct pid *
 bpf__task_pid(struct task_struct * task)
 {
     return _(task->pids[PIDTYPE_PID].pid);
 }
 
+/*
+ * static inline struct pid_namespace *ns_of_pid(struct pid *pid)
+ * {
+ *  struct pid_namespace *ns = NULL;
+ *  if (pid)
+ *      ns = pid->numbers[pid->level].ns;
+ *  return ns;
+ * }
+ */
 static _inline struct pid_namespace *
 bpf__ns_of_pid(struct pid * pid)
 {
@@ -38,12 +54,32 @@ bpf__ns_of_pid(struct pid * pid)
     return ns;
 }
 
+/*
+ * struct pid_namespace *task_active_pid_ns(struct task_struct *tsk)
+ * {
+ *  return ns_of_pid(task_pid(tsk));
+ * }
+ */
 static _inline struct pid_namespace *
 bpf__task_active_pid_ns(struct task_struct * task)
 {
     return bpf__ns_of_pid(bpf__task_pid(task));
 }
 
+/*
+ * pid_t pid_nr_ns(struct pid *pid, struct pid_namespace *ns)
+ * {
+ *  struct upid *upid;
+ *  pid_t nr = 0;
+ *
+ *  if (pid && ns->level <= pid->level) {
+ *      upid = &pid->numbers[ns->level];
+ *      if (upid->ns == ns)
+ *          nr = upid->nr;
+ *  }
+ *  return nr;
+ * }
+ */
 static _inline pid_t
 bpf__pid_nr_ns(struct pid * pid, struct pid_namespace * ns)
 {
@@ -63,6 +99,28 @@ bpf__pid_nr_ns(struct pid * pid, struct pid_namespace * ns)
     return nr;
 }
 
+/*
+ * pid_t __task_pid_nr_ns(struct task_struct *task, enum pid_type type,
+ *          struct pid_namespace *ns)
+ * {
+ *  pid_t nr = 0;
+ *
+ *  rcu_read_lock();
+ *  if (!ns)
+ *      ns = task_active_pid_ns(current);
+ *  if (likely(pid_alive(task))) {
+ *      if (type != PIDTYPE_PID) {
+ *          if (type == __PIDTYPE_TGID)
+ *              type = PIDTYPE_PID;
+ *
+ *          task = task->group_leader;
+ *      }
+ *      nr = pid_nr_ns(rcu_dereference(task->pids[type].pid), ns);
+ *  }
+ *  rcu_read_unlock();
+ *
+ *  return nr;
+ */
 static _inline pid_t
 bpf__task_pid_nr_ns(struct task_struct   * task,
                     enum pid_type          type,
@@ -88,9 +146,15 @@ bpf__task_pid_nr_ns(struct task_struct   * task,
 }
 
 static _inline pid_t
-bpf__task_pid_vnr(struct task_struct * task)
+bpf__task_tgid_vnr(struct task_struct * task)
 {
     return bpf__task_pid_nr_ns(task, __PIDTYPE_TGID, NULL);
+}
+
+static _inline pid_t
+bpf__task_pid_vnr(struct task_struct * task)
+{
+    return bpf__task_pid_nr_ns(task, PIDTYPE_PID, NULL);
 }
 
 SEC("tracepoint/raw_syscalls/sys_enter") int
