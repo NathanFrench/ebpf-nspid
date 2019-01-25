@@ -161,7 +161,7 @@ SEC("tracepoint/raw_syscalls/sys_enter") int
 enter(void * ctx)
 {
     struct task_struct * task     = (struct task_struct *)bpf_get_current_task();
-    pid_t                ns_pid   = bpf__task_pid_vnr(task);
+    pid_t                ns_pid   = bpf__task_tgid_vnr(task);
     __u32                this_pid = bpf_get_current_pid_tgid() >> 32;
 
     if (this_pid != ns_pid && ns_pid != 1) {
